@@ -1,0 +1,497 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+
+st.set_page_config(page_title="PTO Simulator", layout="wide", page_icon="🏖️")
+
+# Title and description
+st.title("🏖️ PTO (Paid Time Off) Simulator")
+st.markdown("""
+This app helps you simulate and optimize your PTO usage across three categories:
+- **RTT**: Expires in December, refills at year start (configurable, typically 8-9 days)
+- **Paid Leave Last Year**: Expires end of May
+- **Paid Leave This Year**: Accrues 2.083333 days/month (25 days/year), becomes "Last Year" on June 1st
+""")
+
+# Helper functions
+def get_accrual_for_month(year, month):
+    """Returns the accrual for a given month (2.083333 days)"""
+    return 2.083333
+
+def get_expiration_dates(current_date):
+    """Returns expiration dates for each PTO type"""
+    current_year = current_date.year
+    
+    # RTT expires December 31st
+    rtt_expiry = datetime(current_year, 12, 31)
+    
+    # Paid Leave Last Year expires May 31st
+    if current_date.month <= 5:
+        last_year_expiry = datetime(current_year, 5, 31)
+    else:
+        last_year_expiry = datetime(current_year + 1, 5, 31)
+    
+    return rtt_expiry, last_year_expiry
+
+def simulate_pto(start_date, initial_rtt, initial_last_year, initial_this_year, 
+                 planned_leaves, simulation_months=12, rtt_refill=8.0):
+    """
+    Simulates PTO balances over time
+    Returns a dataframe with monthly balances and events
+    """
+    results = []
+    events = []
+    
+    # Current balances
+    rtt = initial_rtt
+    last_year = initial_last_year
+    this_year = initial_this_year
+    
+    current_date = start_date
+    end_date = start_date + relativedelta(months=simulation_months)
+    
+    # Sort planned leaves by date
+    planned_leaves_sorted = sorted(planned_leaves, key=lambda x: x['date'])
+    leave_index = 0
+    
+    # Track month-by-month
+    while current_date <= end_date:
+        is_month_end = (current_date + timedelta(days=1)).day == 1
+        
+        # Record daily snapshot
+        results.append({
+            'date': current_date,
+            'rtt': round(rtt, 2),
+            'last_year': round(last_year, 2),
+            'this_year': round(this_year, 2),
+            'total': round(rtt + last_year + this_year, 2)
+        })
+        
+        # Check for expiration at end of May (Paid Leave Last Year)
+        if current_date.month == 5 and is_month_end:
+            if last_year > 0:
+                events.append({'date': current_date, 'event': f'❌ Lost {round(last_year, 2)} Last Year days (expired)'})
+                last_year = 0
+            
+        # Check for rollover on June 1st
+        if current_date.month == 6 and current_date.day == 1:
+            if this_year > 0:
+                events.append({'date': current_date, 'event': f'🔄 {round(this_year, 2)} This Year days → Last Year'})
+                last_year = this_year
+                this_year = 0
+            
+        # Check for RTT expiration at end of December
+        if current_date.month == 12 and is_month_end:
+            if rtt > 0:
+                events.append({'date': current_date, 'event': f'❌ Lost {round(rtt, 2)} RTT days (expired)'})
+                rtt = 0
+            
+        # Check for RTT refill on January 1st
+        if current_date.month == 1 and current_date.day == 1 and current_date != start_date:
+            rtt = rtt_refill
+            events.append({'date': current_date, 'event': f'✨ RTT refilled ({rtt_refill} days)'})
+        
+        # Accrue this year's PTO at end of month
+        if is_month_end:
+            accrual = get_accrual_for_month(current_date.year, current_date.month)
+            this_year += accrual
+            events.append({'date': current_date, 'event': f'➕ Accrued {round(accrual, 2)} This Year days'})
+        
+        # Process planned leaves for this day
+        if leave_index < len(planned_leaves_sorted) and planned_leaves_sorted[leave_index]['date'] == current_date:
+            leave = planned_leaves_sorted[leave_index]
+            days_needed = leave['days']
+            original_days = days_needed
+            breakdown_text = []
+            
+            # Use PTO in recommended order: RTT -> Last Year -> This Year
+            if rtt >= days_needed:
+                rtt -= days_needed
+                breakdown_text.append(f"RTT: {days_needed:.1f}")
+                days_needed = 0
+            elif rtt > 0:
+                breakdown_text.append(f"RTT: {rtt:.1f}")
+                days_needed -= rtt
+                rtt = 0
+            
+            if days_needed > 0:
+                if last_year >= days_needed:
+                    last_year -= days_needed
+                    breakdown_text.append(f"Last Year: {days_needed:.1f}")
+                    days_needed = 0
+                elif last_year > 0:
+                    breakdown_text.append(f"Last Year: {last_year:.1f}")
+                    days_needed -= last_year
+                    last_year = 0
+            
+            if days_needed > 0:
+                if this_year >= days_needed:
+                    this_year -= days_needed
+                    breakdown_text.append(f"This Year: {days_needed:.1f}")
+                    days_needed = 0
+                elif this_year > 0:
+                    breakdown_text.append(f"This Year: {this_year:.1f}")
+                    days_needed -= this_year
+                    this_year = 0
+            
+            if days_needed > 0:
+                events.append({
+                    'date': current_date, 
+                    'event': f'⚠️ LEAVE: {original_days} days - INSUFFICIENT PTO! Short by {days_needed:.1f} days'
+                })
+            else:
+                events.append({
+                    'date': current_date, 
+                    'event': f'🏖️ LEAVE: {original_days} days used ({", ".join(breakdown_text)})'
+                })
+            
+            leave_index += 1
+        
+        current_date += timedelta(days=1)
+    
+    df_results = pd.DataFrame(results)
+    df_events = pd.DataFrame(events)
+    
+    return df_results, df_events
+
+def get_recommendations(rtt, last_year, this_year, current_date):
+    """Returns recommendations on which PTO to use first"""
+    recommendations = []
+    
+    current_year = current_date.year
+    current_month = current_date.month
+    
+    # Calculate days until expiration
+    days_until_dec_31 = (datetime(current_year, 12, 31) - current_date).days
+    if current_month <= 5:
+        days_until_may_31 = (datetime(current_year, 5, 31) - current_date).days
+    else:
+        days_until_may_31 = (datetime(current_year + 1, 5, 31) - current_date).days
+    
+    # Priority recommendations
+    if rtt > 0 and days_until_dec_31 <= 90:
+        recommendations.append(f"⚠️ **URGENT**: Use {rtt:.2f} RTT days before Dec 31 ({days_until_dec_31} days left)")
+    elif rtt > 0:
+        recommendations.append(f"✅ Use RTT days first: {rtt:.2f} days available (expires Dec 31)")
+    
+    if last_year > 0 and days_until_may_31 <= 60:
+        recommendations.append(f"⚠️ **URGENT**: Use {last_year:.2f} Last Year days before May 31 ({days_until_may_31} days left)")
+    elif last_year > 0:
+        recommendations.append(f"📅 Use Last Year days second: {last_year:.2f} days available (expires May 31)")
+    
+    if this_year > 0:
+        recommendations.append(f"💚 This Year days are safe: {this_year:.2f} days (rolls over to Last Year on June 1st)")
+    
+    return recommendations
+
+# Sidebar for inputs
+st.sidebar.header("📊 Initial PTO Balances")
+st.sidebar.markdown("Enter your current PTO days:")
+
+# Date input
+simulation_start_date = st.sidebar.date_input(
+    "Simulation Start Date",
+    value=datetime.now(),
+    help="The date to start the simulation from"
+)
+
+simulation_start_date = datetime.combine(simulation_start_date, datetime.min.time())
+
+# Initial balances
+col1, col2, col3 = st.sidebar.columns(3)
+with col1:
+    initial_rtt = st.number_input("RTT", min_value=0.0, max_value=50.0, value=5.0, step=0.5)
+with col2:
+    initial_last_year = st.number_input("Last Year", min_value=0.0, max_value=50.0, value=10.0, step=0.5)
+with col3:
+    initial_this_year = st.number_input("This Year", min_value=0.0, max_value=50.0, value=8.0, step=0.5)
+
+# RTT refill amount
+rtt_refill_days = st.sidebar.number_input(
+    "RTT Refill (days per year)", 
+    min_value=0.0, 
+    max_value=20.0, 
+    value=9.0, 
+    step=0.5,
+    help="Number of RTT days added on January 1st (usually 8-9 days)"
+)
+
+simulation_months = st.sidebar.slider("Simulation Period (months)", min_value=3, max_value=24, value=12)
+
+# Planned leaves section
+st.sidebar.markdown("---")
+st.sidebar.header("🗓️ Planned Leaves")
+
+# Initialize session state for planned leaves
+if 'planned_leaves' not in st.session_state:
+    st.session_state.planned_leaves = []
+
+# Add new leave
+with st.sidebar.form("add_leave_form"):
+    st.markdown("**Add New Leave:**")
+    leave_date = st.date_input("Leave Date", value=datetime.now() + timedelta(days=30))
+    leave_days = st.number_input("Days", min_value=0.5, max_value=30.0, value=1.0, step=0.5)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        add_button = st.form_submit_button("➕ Add", use_container_width=True)
+    with col2:
+        clear_button = st.form_submit_button("🗑️ Clear All", use_container_width=True)
+    
+    if add_button:
+        st.session_state.planned_leaves.append({
+            'date': datetime.combine(leave_date, datetime.min.time()),
+            'days': leave_days
+        })
+        st.rerun()
+    
+    if clear_button:
+        st.session_state.planned_leaves = []
+        st.rerun()
+
+# Display planned leaves
+if st.session_state.planned_leaves:
+    st.sidebar.markdown("**Planned Leaves:**")
+    for idx, leave in enumerate(sorted(st.session_state.planned_leaves, key=lambda x: x['date'])):
+        col1, col2 = st.sidebar.columns([3, 1])
+        with col1:
+            st.text(f"{leave['date'].strftime('%Y-%m-%d')}: {leave['days']} days")
+        with col2:
+            if st.button("❌", key=f"remove_{idx}"):
+                st.session_state.planned_leaves.pop(idx)
+                st.rerun()
+
+# Main content
+tab1, tab2, tab3 = st.tabs(["📈 Simulation & Forecast", "💡 Recommendations", "📅 Events Timeline"])
+
+with tab1:
+    st.header("PTO Balance Forecast")
+    
+    # Run simulation
+    df_results, df_events = simulate_pto(
+        simulation_start_date, 
+        initial_rtt, 
+        initial_last_year, 
+        initial_this_year,
+        st.session_state.planned_leaves,
+        simulation_months,
+        rtt_refill_days
+    )
+    
+    # Current balance metrics
+    st.subheader("Current Balances")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("RTT", f"{initial_rtt:.2f} days", help="Expires Dec 31")
+    col2.metric("Last Year", f"{initial_last_year:.2f} days", help="Expires May 31")
+    col3.metric("This Year", f"{initial_this_year:.2f} days", help="Accrues monthly")
+    col4.metric("Total", f"{initial_rtt + initial_last_year + initial_this_year:.2f} days")
+    
+    # Future balance metrics (at end of simulation)
+    st.subheader("Projected Balances (End of Period)")
+    final_row = df_results.iloc[-1]
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("RTT", f"{final_row['rtt']:.2f} days", f"{final_row['rtt'] - initial_rtt:+.2f}")
+    col2.metric("Last Year", f"{final_row['last_year']:.2f} days", f"{final_row['last_year'] - initial_last_year:+.2f}")
+    col3.metric("This Year", f"{final_row['this_year']:.2f} days", f"{final_row['this_year'] - initial_this_year:+.2f}")
+    col4.metric("Total", f"{final_row['total']:.2f} days", f"{final_row['total'] - (initial_rtt + initial_last_year + initial_this_year):+.2f}")
+    
+    # Visualization
+    st.subheader("📊 PTO Balance Over Time")
+    
+    # Create stacked area chart
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df_results['date'],
+        y=df_results['rtt'],
+        name='RTT',
+        mode='lines',
+        stackgroup='one',
+        fillcolor='rgba(255, 127, 80, 0.7)',
+        line=dict(width=0.5, color='rgba(255, 127, 80, 1)')
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df_results['date'],
+        y=df_results['last_year'],
+        name='Last Year',
+        mode='lines',
+        stackgroup='one',
+        fillcolor='rgba(255, 215, 0, 0.7)',
+        line=dict(width=0.5, color='rgba(255, 215, 0, 1)')
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df_results['date'],
+        y=df_results['this_year'],
+        name='This Year',
+        mode='lines',
+        stackgroup='one',
+        fillcolor='rgba(50, 205, 50, 0.7)',
+        line=dict(width=0.5, color='rgba(50, 205, 50, 1)')
+    ))
+    
+    # Add total line
+    fig.add_trace(go.Scatter(
+        x=df_results['date'],
+        y=df_results['total'],
+        name='Total',
+        mode='lines',
+        line=dict(width=3, color='rgba(0, 0, 139, 0.8)', dash='dot')
+    ))
+    
+    fig.update_layout(
+        title="PTO Balance Over Time",
+        xaxis_title="Date",
+        yaxis_title="Days",
+        hovermode='x unified',
+        height=500,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Monthly summary table
+    st.subheader("📅 Monthly Summary")
+    
+    # Sample monthly (show first day of each month)
+    df_monthly = df_results[df_results['date'].dt.day == 1].copy()
+    df_monthly['Month'] = df_monthly['date'].dt.strftime('%Y-%m')
+    df_monthly = df_monthly[['Month', 'rtt', 'last_year', 'this_year', 'total']]
+    df_monthly.columns = ['Month', 'RTT', 'Last Year', 'This Year', 'Total']
+    
+    st.dataframe(
+        df_monthly.style.format({
+            'RTT': '{:.2f}',
+            'Last Year': '{:.2f}',
+            'This Year': '{:.2f}',
+            'Total': '{:.2f}'
+        }).background_gradient(cmap='RdYlGn', subset=['Total']),
+        use_container_width=True,
+        hide_index=True
+    )
+
+with tab2:
+    st.header("💡 Smart Recommendations")
+    
+    # Get recommendations
+    recommendations = get_recommendations(
+        initial_rtt, 
+        initial_last_year, 
+        initial_this_year, 
+        simulation_start_date
+    )
+    
+    st.markdown("### Usage Priority")
+    st.markdown("""
+    To avoid losing PTO days, always use them in this order:
+    1. **RTT** (expires December 31st)
+    2. **Last Year** (expires May 31st)
+    3. **This Year** (safest, rolls over to Last Year on June 1st)
+    """)
+    
+    st.markdown("### Your Current Situation")
+    for rec in recommendations:
+        st.markdown(rec)
+    
+    # Expiration warnings
+    st.markdown("---")
+    st.subheader("⚠️ Expiration Alerts")
+    
+    current_year = simulation_start_date.year
+    current_month = simulation_start_date.month
+    
+    # Check for potential losses
+    warnings = []
+    
+    # Check RTT
+    if initial_rtt > 0:
+        days_until_dec = (datetime(current_year, 12, 31) - simulation_start_date).days
+        if days_until_dec <= 60:
+            warnings.append({
+                'Type': 'RTT',
+                'Days': initial_rtt,
+                'Expires': 'Dec 31',
+                'Days Until': days_until_dec,
+                'Urgency': '🔴 URGENT' if days_until_dec <= 30 else '🟡 SOON'
+            })
+    
+    # Check Last Year
+    if initial_last_year > 0:
+        if current_month <= 5:
+            days_until_may = (datetime(current_year, 5, 31) - simulation_start_date).days
+        else:
+            days_until_may = (datetime(current_year + 1, 5, 31) - simulation_start_date).days
+        
+        if days_until_may <= 90:
+            warnings.append({
+                'Type': 'Last Year',
+                'Days': initial_last_year,
+                'Expires': 'May 31',
+                'Days Until': days_until_may,
+                'Urgency': '🔴 URGENT' if days_until_may <= 30 else '🟡 SOON'
+            })
+    
+    if warnings:
+        df_warnings = pd.DataFrame(warnings)
+        st.dataframe(df_warnings, use_container_width=True, hide_index=True)
+    else:
+        st.success("✅ No urgent expirations! All your PTO is safe for now.")
+    
+    # Optimal usage strategy
+    st.markdown("---")
+    st.subheader("📋 Optimal Usage Strategy")
+    
+    total_pto = initial_rtt + initial_last_year + initial_this_year
+    st.info(f"You have **{total_pto:.2f}** total PTO days available.")
+    
+    strategy = []
+    if initial_rtt > 0:
+        strategy.append(f"1. Use **{initial_rtt:.2f}** RTT days before December 31st")
+    if initial_last_year > 0:
+        strategy.append(f"2. Use **{initial_last_year:.2f}** Last Year days before May 31st")
+    if initial_this_year > 0:
+        strategy.append(f"3. Use **{initial_this_year:.2f}** This Year days anytime (they're safe)")
+    
+    for item in strategy:
+        st.markdown(item)
+
+with tab3:
+    st.header("📅 Events Timeline")
+    
+    if not df_events.empty:
+        # Display events chronologically
+        df_events_sorted = df_events.sort_values('date', ascending=False)
+        
+        st.markdown("### All Events")
+        for _, event in df_events_sorted.iterrows():
+            date_str = event['date'].strftime('%Y-%m-%d')
+            with st.expander(f"{date_str} - {event['event']}", expanded=False):
+                st.write(f"**Date:** {date_str}")
+                st.write(f"**Event:** {event['event']}")
+        
+        # Summary statistics
+        st.markdown("---")
+        st.subheader("📊 Event Summary")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        leave_events = df_events[df_events['event'].str.contains('LEAVE', na=False)]
+        accrual_events = df_events[df_events['event'].str.contains('Accrued', na=False)]
+        expiration_events = df_events[df_events['event'].str.contains('Lost', na=False)]
+        
+        col1.metric("Planned Leaves", len(leave_events))
+        col2.metric("Accrual Events", len(accrual_events))
+        col3.metric("Expirations", len(expiration_events))
+        
+    else:
+        st.info("No events yet. Add some planned leaves to see how they affect your PTO balance!")
+
+# Footer
+st.markdown("---")
+st.markdown("**PTO Simulator** | Built with Streamlit | Smart PTO management for 2026")
