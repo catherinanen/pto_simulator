@@ -1,31 +1,67 @@
-# 📦 Supply Chain Stock Optimization App
+# 🏖️ PTO (Paid Time Off) Simulator
 
-A comprehensive Streamlit application for optimizing inventory levels in supply chain management using proven techniques like EOQ (Economic Order Quantity), Reorder Point (ROP), and Safety Stock calculations.
+A comprehensive Streamlit application for simulating and optimizing your PTO (Paid Time Off) usage across multiple leave categories. Plan your vacation days strategically and avoid losing time off due to expiration!
 
 ## Features
 
-### 🎯 Single Product Analysis
-- Calculate optimal order quantities using EOQ formula
-- Determine reorder points and safety stock levels
-- Visualize inventory levels over time
-- Analyze cost breakdowns (ordering vs. holding costs)
-- Customize service levels and demand variability
+### 📈 Simulation & Forecast
+- Real-time PTO balance tracking across three categories
+- Visual forecasts with interactive charts
+- Monthly balance summary with color-coded tables
+- Projected balances for up to 24 months ahead
 
-### 📊 Multi-Product Comparison
-- Compare optimization results across multiple products
-- Side-by-side analysis of EOQ, ROP, and costs
-- Visual comparisons with interactive charts
+### 💡 Smart Recommendations
+- Automatic usage priority recommendations (RTT → Last Year → This Year)
+- Expiration alerts with urgency indicators
+- Optimal usage strategy based on your current balances
+- Days-until-expiration countdown
 
-### 🔬 Scenario Analysis
-- Test sensitivity to parameter changes
-- Analyze impact of demand, costs, and service levels
-- Make data-driven decisions with what-if scenarios
+### 📅 Events Timeline
+- Complete history of all PTO events
+- Accrual tracking (monthly additions)
+- Leave usage breakdown by category
+- Expiration notifications
+
+### 🗓️ Planned Leaves Management
+- Add multiple planned leaves
+- Interactive leave calendar
+- Automatic deduction in recommended order
+- Insufficient PTO warnings
+
+## PTO Categories
+
+### RTT (Réduction du Temps de Travail)
+- **Expires**: December 31st
+- **Refills**: January 1st (configurable, typically 8-9 days)
+- **Priority**: Use FIRST (highest expiration risk)
+
+### Paid Leave Last Year
+- **Expires**: May 31st
+- **Source**: Previous year's "This Year" balance rolls over on June 1st
+- **Priority**: Use SECOND
+
+### Paid Leave This Year
+- **Accrues**: 2.083333 days per month (25 days per year)
+- **Rolls over**: Becomes "Last Year" on June 1st
+- **Priority**: Use LAST (safest, won't expire soon)
 
 ## Installation
 
-1. Clone or download this repository
+1. Clone this repository:
+```bash
+git clone https://github.com/catherinanen/travelplanner.git
+cd travelplanner
+```
 
-2. Install required dependencies:
+2. Create a virtual environment (recommended):
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On macOS/Linux
+# or
+.venv\Scripts\activate  # On Windows
+```
+
+3. Install required dependencies:
 ```bash
 pip install -r requirements.txt
 ```
@@ -39,53 +75,49 @@ streamlit run app.py
 
 The app will open in your default browser at `http://localhost:8501`
 
-## Input Parameters
+## How to Use
 
-### Demand & Lead Time
-- **Annual Demand**: Total units needed per year
-- **Lead Time**: Days between ordering and receiving stock
-- **Demand Std Dev**: Daily demand variability (standard deviation)
+### 1. Set Initial Balances
+In the sidebar, enter your current PTO balances:
+- **RTT**: Current RTT days available
+- **Last Year**: Carried over from previous year
+- **This Year**: Current year's accrued PTO
 
-### Cost Parameters
-- **Ordering Cost**: Fixed cost per order placement ($)
-- **Holding Cost Rate**: Annual cost to hold inventory (% of unit cost)
-- **Unit Cost**: Price per unit ($)
-- **Stockout Cost**: Cost of running out of stock ($)
+### 2. Configure RTT Refill
+Set how many RTT days you receive on January 1st (typically 8-9 days, varies by year)
 
-### Service Level
-- Target percentage of demand met from stock (90-99%)
-- Higher service levels require more safety stock
+### 3. Add Planned Leaves
+- Click "Add New Leave" in the sidebar
+- Select the date and number of days
+- The app automatically deducts in optimal order
 
-## Optimization Formulas
+### 4. Review Simulation
+- **Current Balances**: See today's PTO status
+- **Projected Balances**: View end-of-period projections
+- **Timeline Chart**: Visual representation of balances over time
+- **Monthly Summary**: Detailed month-by-month breakdown
 
-### Economic Order Quantity (EOQ)
-```
-EOQ = √((2 × D × S) / H)
-```
-where:
-- D = Annual demand
-- S = Ordering cost per order
-- H = Holding cost per unit per year
+### 5. Follow Recommendations
+Check the "Recommendations" tab for:
+- Which PTO to use first
+- Expiration warnings
+- Optimal usage strategy
 
-### Reorder Point (ROP)
-```
-ROP = (Average daily demand × Lead time) + Safety stock
-```
+## Key Rules
 
-### Safety Stock
-```
-Safety Stock = Z × σ_L
-```
-where:
-- Z = Z-score for desired service level
-- σ_L = Standard deviation during lead time
+### Expiration Rules
+- **RTT expires**: December 31st → Lost if not used
+- **Last Year expires**: May 31st → Lost if not used
+- **This Year rolls over**: June 1st → Becomes "Last Year"
 
-## Example Use Cases
+### Accrual Rules
+- **This Year**: +2.083333 days at end of each month
+- **RTT**: Refills on January 1st (configurable amount)
 
-1. **Manufacturing**: Optimize raw material inventory
-2. **Retail**: Manage product stock levels across stores
-3. **E-commerce**: Balance fulfillment speed vs. storage costs
-4. **Wholesale**: Determine optimal bulk ordering quantities
+### Usage Priority (Automatic)
+1. **RTT** - Most urgent (expires Dec 31)
+2. **Last Year** - Urgent (expires May 31)
+3. **This Year** - Safe (rolls over to Last Year)
 
 ## Technology Stack
 
@@ -93,33 +125,48 @@ where:
 - **Pandas**: Data manipulation and analysis
 - **NumPy**: Numerical computations
 - **Plotly**: Interactive visualizations
-- **SciPy**: Statistical calculations
+- **python-dateutil**: Date calculations
+- **Matplotlib**: Styling support
 
 ## Project Structure
 
 ```
 .
 ├── app.py                 # Main Streamlit application
-├── optimization.py        # Inventory optimization algorithms
 ├── requirements.txt       # Python dependencies
 └── README.md             # This file
 ```
 
 ## Tips for Best Results
 
-1. **Accurate Data**: Use historical data for demand and costs
-2. **Service Level**: Balance between customer satisfaction and inventory costs
-3. **Lead Time**: Include safety margins for supplier reliability
-4. **Review Regularly**: Update parameters as business conditions change
+1. **Update Regularly**: Enter your current PTO balances monthly
+2. **Plan Ahead**: Add your planned leaves to see future impact
+3. **Check Recommendations**: Follow the app's advice to avoid expiration
+4. **Adjust RTT Refill**: Update the refill amount based on your company's policy for the year
+5. **Use Priority Order**: The app automatically deducts in the safest order
+
+## Example Scenarios
+
+### Scenario 1: End of Year Rush
+If you have 5 RTT days in November:
+- ⚠️ **Urgent**: Use all 5 RTT days before December 31st or lose them!
+
+### Scenario 2: May Deadline
+If you have 10 "Last Year" days in April:
+- ⚠️ **Urgent**: Use all 10 days before May 31st or lose them!
+
+### Scenario 3: Safe Planning
+If you have 15 "This Year" days:
+- ✅ **Safe**: These will roll over to "Last Year" on June 1st
 
 ## License
 
-This project is open source and available for educational and commercial use.
+This project is open source and available for educational and personal use.
 
 ## Contributing
 
-Feel free to fork, modify, and enhance this application for your specific needs.
+Feel free to fork, modify, and enhance this application for your specific needs. Pull requests are welcome!
 
 ---
 
-Built with ❤️ using Streamlit | Optimizing supply chains since 2026
+Built with ❤️ using Streamlit | Smart PTO management since 2026
