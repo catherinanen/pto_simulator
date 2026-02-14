@@ -309,7 +309,7 @@ with st.sidebar.form("add_leave_form"):
     st.markdown("**Add New Leave:**")
     leave_date = st.date_input("Leave Date", value=datetime.now() + timedelta(days=30))
     leave_days = st.number_input("Days", min_value=0.5, max_value=30.0, value=1.0, step=0.5)
-    leave_note = st.text_input("Note (optional)", placeholder="e.g., Kamila birthday", max_chars=50)
+    leave_note = st.text_input("Note (optional)", placeholder="e.g., Trip to Barcelona", max_chars=50)
     
     col1, col2 = st.columns(2)
     with col1:
