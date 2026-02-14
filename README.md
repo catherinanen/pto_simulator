@@ -182,9 +182,12 @@ Your app will be live at: `https://pto-simulator-[yourname].streamlit.app`
 
 ### Notes on Cloud Deployment
 - Each user will have their own session
-- Settings are saved locally when running on your computer
-- On Streamlit Cloud, settings persist only during the session
-- Users should bookmark their simulation parameters or save them manually
+- **Settings persistence**: 
+  - **Local use**: Settings auto-save to `pto_settings.json`
+  - **Cloud use**: Download your settings file and upload it to restore your data
+- Users can bookmark their simulation or save/load their configuration
+- Click "⬇️ Download" to save your settings
+- Click "⬆️ Upload" to restore previously saved settings
 
 ## Contributing
 

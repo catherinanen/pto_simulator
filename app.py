@@ -220,7 +220,7 @@ def get_recommendations(rtt, last_year, this_year, current_date):
 # Sidebar for inputs
 st.sidebar.header("📊 Initial PTO Balances")
 st.sidebar.markdown("Enter your current PTO days:")
-st.sidebar.caption("💾 Your inputs are automatically saved")
+st.sidebar.caption("💾 Auto-saved locally | Use Download/Upload for cloud")
 
 # Date input
 default_start_date = saved_settings.get('start_date', datetime.now().strftime('%Y-%m-%d'))
@@ -303,6 +303,63 @@ if 'planned_leaves' not in st.session_state:
         }
         for leave in saved_leaves
     ]
+
+# Save/Load settings buttons
+st.sidebar.markdown("**💾 Save/Load Your Data:**")
+col1, col2 = st.sidebar.columns(2)
+
+with col1:
+    # Download settings
+    settings_to_download = {
+        'start_date': simulation_start_date.strftime('%Y-%m-%d'),
+        'initial_rtt': initial_rtt,
+        'initial_last_year': initial_last_year,
+        'initial_this_year': initial_this_year,
+        'rtt_refill_days': rtt_refill_days,
+        'simulation_months': simulation_months,
+        'planned_leaves': [
+            {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days'], 'note': leave.get('note', '')}
+            for leave in st.session_state.planned_leaves
+        ]
+    }
+    st.download_button(
+        label="⬇️ Download",
+        data=json.dumps(settings_to_download, indent=2),
+        file_name="my_pto_settings.json",
+        mime="application/json",
+        use_container_width=True,
+        help="Save your settings to a file"
+    )
+
+with col2:
+    # Upload settings
+    uploaded_file = st.file_uploader(
+        "⬆️ Upload",
+        type=['json'],
+        help="Load previously saved settings",
+        label_visibility="collapsed",
+        key="settings_uploader"
+    )
+    if uploaded_file is not None:
+        try:
+            uploaded_settings = json.loads(uploaded_file.read())
+            # Update session state and save
+            save_settings(uploaded_settings)
+            # Convert leaves
+            st.session_state.planned_leaves = [
+                {
+                    'date': datetime.strptime(leave['date'], '%Y-%m-%d'),
+                    'days': leave['days'],
+                    'note': leave.get('note', '')
+                }
+                for leave in uploaded_settings.get('planned_leaves', [])
+            ]
+            st.success("✅ Settings loaded!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error loading settings: {e}")
+
+st.sidebar.markdown("---")
 
 # Add new leave
 with st.sidebar.form("add_leave_form"):
