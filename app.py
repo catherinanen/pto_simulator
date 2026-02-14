@@ -164,15 +164,18 @@ def simulate_pto(start_date, initial_rtt, initial_last_year, initial_this_year,
                     days_needed -= this_year
                     this_year = 0
             
+            # Get note if available
+            note_text = f" - {leave.get('note')}" if leave.get('note') else ""
+            
             if days_needed > 0:
                 events.append({
                     'date': current_date, 
-                    'event': f'⚠️ LEAVE: {original_days} days - INSUFFICIENT PTO! Short by {days_needed:.1f} days'
+                    'event': f'⚠️ LEAVE: {original_days} days{note_text} - INSUFFICIENT PTO! Short by {days_needed:.1f} days'
                 })
             else:
                 events.append({
                     'date': current_date, 
-                    'event': f'🏖️ LEAVE: {original_days} days used ({", ".join(breakdown_text)})'
+                    'event': f'🏖️ LEAVE: {original_days} days{note_text} ({', '.join(breakdown_text)})'
                 })
             
             leave_index += 1
@@ -295,7 +298,8 @@ if 'planned_leaves' not in st.session_state:
     st.session_state.planned_leaves = [
         {
             'date': datetime.strptime(leave['date'], '%Y-%m-%d'),
-            'days': leave['days']
+            'days': leave['days'],
+            'note': leave.get('note', '')
         }
         for leave in saved_leaves
     ]
@@ -305,6 +309,7 @@ with st.sidebar.form("add_leave_form"):
     st.markdown("**Add New Leave:**")
     leave_date = st.date_input("Leave Date", value=datetime.now() + timedelta(days=30))
     leave_days = st.number_input("Days", min_value=0.5, max_value=30.0, value=1.0, step=0.5)
+    leave_note = st.text_input("Note (optional)", placeholder="e.g., Kamila birthday", max_chars=50)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -315,11 +320,12 @@ with st.sidebar.form("add_leave_form"):
     if add_button:
         st.session_state.planned_leaves.append({
             'date': datetime.combine(leave_date, datetime.min.time()),
-            'days': leave_days
+            'days': leave_days,
+            'note': leave_note
         })
         # Save to settings file
         current_settings['planned_leaves'] = [
-            {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days']}
+            {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days'], 'note': leave.get('note', '')}
             for leave in st.session_state.planned_leaves
         ]
         save_settings(current_settings)
@@ -338,13 +344,16 @@ if st.session_state.planned_leaves:
     for idx, leave in enumerate(sorted(st.session_state.planned_leaves, key=lambda x: x['date'])):
         col1, col2 = st.sidebar.columns([3, 1])
         with col1:
-            st.text(f"{leave['date'].strftime('%Y-%m-%d')}: {leave['days']} days")
+            leave_text = f"{leave['date'].strftime('%Y-%m-%d')}: {leave['days']} days"
+            if leave.get('note'):
+                leave_text += f" ({leave['note']})"
+            st.text(leave_text)
         with col2:
             if st.button("❌", key=f"remove_{idx}"):
                 st.session_state.planned_leaves.pop(idx)
                 # Save updated list
                 current_settings['planned_leaves'] = [
-                    {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days']}
+                    {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days'], 'note': leave.get('note', '')}
                     for leave in st.session_state.planned_leaves
                 ]
                 save_settings(current_settings)
