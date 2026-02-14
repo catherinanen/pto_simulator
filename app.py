@@ -612,50 +612,44 @@ with tab2:
         
         # Timeline visualization
         st.markdown("---")
-        st.subheader("📅 Timeline View")
+        st.subheader("📅 Calendar View")
         
-        # Create timeline chart
-        timeline_data = []
+        # Group leaves by month
+        leaves_by_month = {}
         for leave in sorted_leaves:
-            timeline_data.append({
-                'Leave': leave.get('note', 'Leave') if leave.get('note') else f"{leave['days']}d off",
-                'Start': leave['date'],
-                'End': leave['date'] + timedelta(days=int(leave['days'])),
-                'Days': leave['days']
-            })
+            month_key = leave['date'].strftime('%Y-%m')
+            if month_key not in leaves_by_month:
+                leaves_by_month[month_key] = []
+            leaves_by_month[month_key].append(leave)
         
-        if timeline_data:
-            df_timeline = pd.DataFrame(timeline_data)
+        # Display calendar by month
+        for month_key in sorted(leaves_by_month.keys()):
+            month_date = datetime.strptime(month_key, '%Y-%m')
+            month_name = month_date.strftime('%B %Y')
             
-            fig_timeline = go.Figure()
-            
-            for idx, row in df_timeline.iterrows():
-                fig_timeline.add_trace(go.Scatter(
-                    x=[row['Start'], row['End']],
-                    y=[row['Leave'], row['Leave']],
-                    mode='lines+markers',
-                    name=row['Leave'],
-                    line=dict(width=20, color=f'rgba({50 + idx * 40}, {150 + idx * 20}, {200 - idx * 30}, 0.7)'),
-                    marker=dict(size=10),
-                    hovertemplate=f"<b>{row['Leave']}</b><br>{row['Days']} days<br>%{{x|%Y-%m-%d}}<extra></extra>"
-                ))
-            
-            fig_timeline.update_layout(
-                title="",
-                xaxis_title="Date",
-                yaxis_title="",
-                hovermode='closest',
-                height=300,
-                showlegend=False,
-                xaxis=dict(
-                    gridcolor='rgba(200, 200, 200, 0.3)',
-                ),
-                yaxis=dict(
-                    gridcolor='rgba(200, 200, 200, 0.3)',
-                )
-            )
-            
-            st.plotly_chart(fig_timeline, use_container_width=True)
+            with st.expander(f"📆 {month_name} ({len(leaves_by_month[month_key])} leave{'s' if len(leaves_by_month[month_key]) > 1 else ''})", expanded=True):
+                for leave in leaves_by_month[month_key]:
+                    col1, col2, col3, col4 = st.columns([2, 1, 3, 2])
+                    
+                    with col1:
+                        st.markdown(f"**{leave['date'].strftime('%a, %b %d')}**")
+                    with col2:
+                        st.markdown(f"🏖️ {leave['days']} days")
+                    with col3:
+                        note_display = leave.get('note', 'No note')
+                        st.markdown(f"*{note_display}*")
+                    with col4:
+                        days_away = (leave['date'] - simulation_start_date).days
+                        if days_away < 0:
+                            st.caption("✅ Past")
+                        elif days_away == 0:
+                            st.caption("🔥 TODAY!")
+                        elif days_away <= 7:
+                            st.caption(f"⚠️ In {days_away} days")
+                        else:
+                            st.caption(f"📅 In {days_away} days")
+                
+                st.markdown("")
         
         # Edit/Delete section
         st.markdown("---")
