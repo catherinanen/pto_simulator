@@ -163,6 +163,29 @@ If you have 15 "This Year" days:
 
 This project is open source and available for educational and personal use.
 
+## Deployment
+
+### Deploy to Streamlit Cloud (Free)
+
+1. **Fork or use this repository**
+2. **Go to [share.streamlit.io](https://share.streamlit.io/)**
+3. **Sign in with GitHub**
+4. **Click "New app"**
+5. **Select:**
+   - Repository: `catherinanen/pto_simulator`
+   - Branch: `main`
+   - Main file path: `app.py`
+6. **Click "Deploy"**
+7. **Share your URL** with friends!
+
+Your app will be live at: `https://pto-simulator-[yourname].streamlit.app`
+
+### Notes on Cloud Deployment
+- Each user will have their own session
+- Settings are saved locally when running on your computer
+- On Streamlit Cloud, settings persist only during the session
+- Users should bookmark their simulation parameters or save them manually
+
 ## Contributing
 
 Feel free to fork, modify, and enhance this application for your specific needs. Pull requests are welcome!
