@@ -5,8 +5,34 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import json
+import os
 
 st.set_page_config(page_title="PTO Simulator", layout="wide", page_icon="🏖️")
+
+# File to store user preferences
+SETTINGS_FILE = "pto_settings.json"
+
+def load_settings():
+    """Load saved settings from JSON file"""
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_settings(settings):
+    """Save settings to JSON file"""
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+    except:
+        pass
+
+# Load previous settings
+saved_settings = load_settings()
 
 # Title and description
 st.title("🏖️ PTO (Paid Time Off) Simulator")
@@ -191,11 +217,13 @@ def get_recommendations(rtt, last_year, this_year, current_date):
 # Sidebar for inputs
 st.sidebar.header("📊 Initial PTO Balances")
 st.sidebar.markdown("Enter your current PTO days:")
+st.sidebar.caption("💾 Your inputs are automatically saved")
 
 # Date input
+default_start_date = saved_settings.get('start_date', datetime.now().strftime('%Y-%m-%d'))
 simulation_start_date = st.sidebar.date_input(
     "Simulation Start Date",
-    value=datetime.now(),
+    value=datetime.strptime(default_start_date, '%Y-%m-%d').date() if isinstance(default_start_date, str) else datetime.now(),
     help="The date to start the simulation from"
 )
 
@@ -204,31 +232,73 @@ simulation_start_date = datetime.combine(simulation_start_date, datetime.min.tim
 # Initial balances
 col1, col2, col3 = st.sidebar.columns(3)
 with col1:
-    initial_rtt = st.number_input("RTT", min_value=0.0, max_value=50.0, value=5.0, step=0.5)
+    initial_rtt = st.number_input(
+        "RTT", 
+        min_value=0.0, 
+        max_value=50.0, 
+        value=float(saved_settings.get('initial_rtt', 5.0)), 
+        step=0.5
+    )
 with col2:
-    initial_last_year = st.number_input("Last Year", min_value=0.0, max_value=50.0, value=10.0, step=0.5)
+    initial_last_year = st.number_input(
+        "Last Year", 
+        min_value=0.0, 
+        max_value=50.0, 
+        value=float(saved_settings.get('initial_last_year', 10.0)), 
+        step=0.5
+    )
 with col3:
-    initial_this_year = st.number_input("This Year", min_value=0.0, max_value=50.0, value=8.0, step=0.5)
+    initial_this_year = st.number_input(
+        "This Year", 
+        min_value=0.0, 
+        max_value=50.0, 
+        value=float(saved_settings.get('initial_this_year', 8.0)), 
+        step=0.5
+    )
 
 # RTT refill amount
 rtt_refill_days = st.sidebar.number_input(
     "RTT Refill (days per year)", 
     min_value=0.0, 
     max_value=20.0, 
-    value=9.0, 
+    value=float(saved_settings.get('rtt_refill_days', 9.0)), 
     step=0.5,
     help="Number of RTT days added on January 1st (usually 8-9 days)"
 )
 
-simulation_months = st.sidebar.slider("Simulation Period (months)", min_value=3, max_value=24, value=12)
+simulation_months = st.sidebar.slider(
+    "Simulation Period (months)", 
+    min_value=3, 
+    max_value=24, 
+    value=int(saved_settings.get('simulation_months', 12))
+)
+
+# Save current settings
+current_settings = {
+    'start_date': simulation_start_date.strftime('%Y-%m-%d'),
+    'initial_rtt': initial_rtt,
+    'initial_last_year': initial_last_year,
+    'initial_this_year': initial_this_year,
+    'rtt_refill_days': rtt_refill_days,
+    'simulation_months': simulation_months
+}
+save_settings(current_settings)
 
 # Planned leaves section
 st.sidebar.markdown("---")
 st.sidebar.header("🗓️ Planned Leaves")
 
-# Initialize session state for planned leaves
+# Initialize session state for planned leaves from saved settings
 if 'planned_leaves' not in st.session_state:
-    st.session_state.planned_leaves = []
+    saved_leaves = saved_settings.get('planned_leaves', [])
+    # Convert saved string dates back to datetime objects
+    st.session_state.planned_leaves = [
+        {
+            'date': datetime.strptime(leave['date'], '%Y-%m-%d'),
+            'days': leave['days']
+        }
+        for leave in saved_leaves
+    ]
 
 # Add new leave
 with st.sidebar.form("add_leave_form"):
@@ -247,10 +317,19 @@ with st.sidebar.form("add_leave_form"):
             'date': datetime.combine(leave_date, datetime.min.time()),
             'days': leave_days
         })
+        # Save to settings file
+        current_settings['planned_leaves'] = [
+            {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days']}
+            for leave in st.session_state.planned_leaves
+        ]
+        save_settings(current_settings)
         st.rerun()
     
     if clear_button:
         st.session_state.planned_leaves = []
+        # Save empty list to settings
+        current_settings['planned_leaves'] = []
+        save_settings(current_settings)
         st.rerun()
 
 # Display planned leaves
@@ -263,6 +342,12 @@ if st.session_state.planned_leaves:
         with col2:
             if st.button("❌", key=f"remove_{idx}"):
                 st.session_state.planned_leaves.pop(idx)
+                # Save updated list
+                current_settings['planned_leaves'] = [
+                    {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days']}
+                    for leave in st.session_state.planned_leaves
+                ]
+                save_settings(current_settings)
                 st.rerun()
 
 # Main content
