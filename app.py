@@ -10,6 +10,28 @@ import os
 
 st.set_page_config(page_title="PTO Simulator", layout="wide", page_icon="🏖️")
 
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    /* Smaller X button in sidebar */
+    [data-testid="stSidebar"] button[kind="secondary"] {
+        padding: 0.15rem 0.3rem;
+        font-size: 0.8rem;
+        min-height: 1.5rem;
+    }
+    
+    /* Better table styling */
+    .stDataFrame {
+        border-radius: 8px;
+    }
+    
+    /* Metric styling */
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # File to store user preferences
 SETTINGS_FILE = "pto_settings.json"
 
@@ -304,6 +326,10 @@ if 'planned_leaves' not in st.session_state:
         for leave in saved_leaves
     ]
 
+# Initialize form counter for resetting
+if 'form_counter' not in st.session_state:
+    st.session_state.form_counter = 0
+
 # Upload settings section - at the top
 st.sidebar.markdown("**📂 Load Saved Settings**")
 uploaded_file = st.sidebar.file_uploader(
@@ -334,7 +360,7 @@ if uploaded_file is not None:
 st.sidebar.markdown("")
 
 # Add new leave
-with st.sidebar.form("add_leave_form"):
+with st.sidebar.form(f"add_leave_form_{st.session_state.form_counter}"):
     st.markdown("**Add New Leave:**")
     leave_date = st.date_input("Leave Date", value=datetime.now() + timedelta(days=30))
     leave_days = st.number_input("Days", min_value=0.5, max_value=30.0, value=1.0, step=0.5)
@@ -358,6 +384,8 @@ with st.sidebar.form("add_leave_form"):
             for leave in st.session_state.planned_leaves
         ]
         save_settings(current_settings)
+        # Increment counter to reset form
+        st.session_state.form_counter += 1
         st.rerun()
     
     if clear_button:
@@ -365,6 +393,7 @@ with st.sidebar.form("add_leave_form"):
         # Save empty list to settings
         current_settings['planned_leaves'] = []
         save_settings(current_settings)
+        st.session_state.form_counter += 1
         st.rerun()
 
 # Download settings button - below the add form
@@ -394,18 +423,18 @@ st.sidebar.download_button(
 st.sidebar.caption("💡 Save your settings to restore them later or share with others")
 st.sidebar.markdown("---")
 
-# Display planned leaves
+# Display planned leaves in sidebar (compact)
 if st.session_state.planned_leaves:
-    st.sidebar.markdown("**Planned Leaves:**")
+    st.sidebar.markdown(f"**Planned Leaves:** ({len(st.session_state.planned_leaves)})")
     for idx, leave in enumerate(sorted(st.session_state.planned_leaves, key=lambda x: x['date'])):
-        col1, col2 = st.sidebar.columns([3, 1])
+        col1, col2 = st.sidebar.columns([9, 1])
         with col1:
-            leave_text = f"{leave['date'].strftime('%Y-%m-%d')}: {leave['days']} days"
+            leave_text = f"{leave['date'].strftime('%m/%d')}: {leave['days']}d"
             if leave.get('note'):
-                leave_text += f" ({leave['note']})"
-            st.text(leave_text)
+                leave_text += f" - {leave['note'][:20]}"
+            st.caption(leave_text)
         with col2:
-            if st.button("❌", key=f"remove_{idx}"):
+            if st.button("×", key=f"sidebar_remove_{idx}", help="Remove this leave"):
                 st.session_state.planned_leaves.pop(idx)
                 # Save updated list
                 current_settings['planned_leaves'] = [
@@ -414,9 +443,11 @@ if st.session_state.planned_leaves:
                 ]
                 save_settings(current_settings)
                 st.rerun()
+else:
+    st.sidebar.caption("No planned leaves yet")
 
 # Main content
-tab1, tab2, tab3 = st.tabs(["📈 Simulation & Forecast", "💡 Recommendations", "📅 Events Timeline"])
+tab1, tab2, tab3, tab4 = st.tabs(["📈 Simulation & Forecast", "🗓️ Planned Leaves", "📅 Events Timeline", "💡 Recommendations"])
 
 with tab1:
     st.header("PTO Balance Forecast")
@@ -527,7 +558,139 @@ with tab1:
     )
 
 with tab2:
-    st.header("💡 Smart Recommendations")
+    st.header("�️ Planned Leaves Manager")
+    
+    if st.session_state.planned_leaves:
+        # Sort leaves by date
+        sorted_leaves = sorted(st.session_state.planned_leaves, key=lambda x: x['date'])
+        
+        # Create a nice table view
+        st.subheader("📋 Your Planned Leaves")
+        
+        # Create DataFrame for display
+        leaves_data = []
+        for leave in sorted_leaves:
+            leaves_data.append({
+                'Date': leave['date'].strftime('%Y-%m-%d'),
+                'Day': leave['date'].strftime('%A'),
+                'Days': leave['days'],
+                'Note': leave.get('note', '-'),
+                'Weeks Away': f"{((leave['date'] - simulation_start_date).days // 7)} weeks"
+            })
+        
+        df_leaves = pd.DataFrame(leaves_data)
+        
+        # Display with styling
+        st.dataframe(
+            df_leaves,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Date": st.column_config.DateColumn("📅 Date", width="medium"),
+                "Day": st.column_config.TextColumn("Day", width="small"),
+                "Days": st.column_config.NumberColumn("⏱️ Days", width="small", format="%.1f"),
+                "Note": st.column_config.TextColumn("📝 Note", width="large"),
+                "Weeks Away": st.column_config.TextColumn("⏳ Time", width="small")
+            }
+        )
+        
+        # Statistics
+        st.markdown("---")
+        st.subheader("📊 Leave Statistics")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_days = sum(leave['days'] for leave in sorted_leaves)
+        next_leave = sorted_leaves[0] if sorted_leaves else None
+        leaves_this_year = [l for l in sorted_leaves if l['date'].year == simulation_start_date.year]
+        
+        col1.metric("Total Planned Days", f"{total_days:.1f}")
+        col2.metric("Number of Leaves", len(sorted_leaves))
+        if next_leave:
+            days_until = (next_leave['date'] - simulation_start_date).days
+            col3.metric("Next Leave", f"in {days_until} days")
+        col4.metric("Leaves This Year", len(leaves_this_year))
+        
+        # Timeline visualization
+        st.markdown("---")
+        st.subheader("📅 Timeline View")
+        
+        # Create timeline chart
+        timeline_data = []
+        for leave in sorted_leaves:
+            timeline_data.append({
+                'Leave': leave.get('note', 'Leave') if leave.get('note') else f"{leave['days']}d off",
+                'Start': leave['date'],
+                'End': leave['date'] + timedelta(days=int(leave['days'])),
+                'Days': leave['days']
+            })
+        
+        if timeline_data:
+            df_timeline = pd.DataFrame(timeline_data)
+            
+            fig_timeline = go.Figure()
+            
+            for idx, row in df_timeline.iterrows():
+                fig_timeline.add_trace(go.Scatter(
+                    x=[row['Start'], row['End']],
+                    y=[row['Leave'], row['Leave']],
+                    mode='lines+markers',
+                    name=row['Leave'],
+                    line=dict(width=20, color=f'rgba({50 + idx * 40}, {150 + idx * 20}, {200 - idx * 30}, 0.7)'),
+                    marker=dict(size=10),
+                    hovertemplate=f"<b>{row['Leave']}</b><br>{row['Days']} days<br>%{{x|%Y-%m-%d}}<extra></extra>"
+                ))
+            
+            fig_timeline.update_layout(
+                title="",
+                xaxis_title="Date",
+                yaxis_title="",
+                hovermode='closest',
+                height=300,
+                showlegend=False,
+                xaxis=dict(
+                    gridcolor='rgba(200, 200, 200, 0.3)',
+                ),
+                yaxis=dict(
+                    gridcolor='rgba(200, 200, 200, 0.3)',
+                )
+            )
+            
+            st.plotly_chart(fig_timeline, use_container_width=True)
+        
+        # Edit/Delete section
+        st.markdown("---")
+        st.subheader("✏️ Edit or Remove Leaves")
+        
+        for idx, leave in enumerate(sorted_leaves):
+            with st.expander(f"{leave['date'].strftime('%Y-%m-%d')} - {leave['days']} days - {leave.get('note', 'No note')}"):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.write(f"**Date:** {leave['date'].strftime('%A, %B %d, %Y')}")
+                    st.write(f"**Duration:** {leave['days']} days")
+                    st.write(f"**Note:** {leave.get('note', 'None')}")
+                    st.write(f"**Days from now:** {(leave['date'] - simulation_start_date).days} days")
+                with col2:
+                    if st.button("🗑️ Remove", key=f"remove_detail_{idx}", use_container_width=True):
+                        st.session_state.planned_leaves.pop(idx)
+                        current_settings['planned_leaves'] = [
+                            {'date': l['date'].strftime('%Y-%m-%d'), 'days': l['days'], 'note': l.get('note', '')}
+                            for l in st.session_state.planned_leaves
+                        ]
+                        save_settings(current_settings)
+                        st.rerun()
+    else:
+        st.info("📝 No planned leaves yet. Add some using the sidebar form!")
+        st.markdown("""
+        **How to add a leave:**
+        1. Use the form in the sidebar on the left
+        2. Select a date
+        3. Enter the number of days
+        4. Optionally add a note (e.g., "Trip to Barcelona")
+        5. Click **Add**
+        """)
+
+with tab3:
+    st.header("📅 Events Timeline")
     
     # Get recommendations
     recommendations = get_recommendations(
@@ -641,6 +804,9 @@ with tab3:
         
     else:
         st.info("No events yet. Add some planned leaves to see how they affect your PTO balance!")
+
+with tab4:
+    st.header("💡 Smart Recommendations")
 
 # Footer
 st.markdown("---")
