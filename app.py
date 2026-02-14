@@ -304,62 +304,34 @@ if 'planned_leaves' not in st.session_state:
         for leave in saved_leaves
     ]
 
-# Save/Load settings buttons
-st.sidebar.markdown("**💾 Save/Load Your Data:**")
-col1, col2 = st.sidebar.columns(2)
-
-with col1:
-    # Download settings
-    settings_to_download = {
-        'start_date': simulation_start_date.strftime('%Y-%m-%d'),
-        'initial_rtt': initial_rtt,
-        'initial_last_year': initial_last_year,
-        'initial_this_year': initial_this_year,
-        'rtt_refill_days': rtt_refill_days,
-        'simulation_months': simulation_months,
-        'planned_leaves': [
-            {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days'], 'note': leave.get('note', '')}
-            for leave in st.session_state.planned_leaves
+# Upload settings section - at the top
+st.sidebar.markdown("**📂 Load Saved Settings**")
+uploaded_file = st.sidebar.file_uploader(
+    "Upload your settings file",
+    type=['json'],
+    help="Restore previously saved PTO configuration",
+    key="settings_uploader"
+)
+if uploaded_file is not None:
+    try:
+        uploaded_settings = json.loads(uploaded_file.read())
+        # Update session state and save
+        save_settings(uploaded_settings)
+        # Convert leaves
+        st.session_state.planned_leaves = [
+            {
+                'date': datetime.strptime(leave['date'], '%Y-%m-%d'),
+                'days': leave['days'],
+                'note': leave.get('note', '')
+            }
+            for leave in uploaded_settings.get('planned_leaves', [])
         ]
-    }
-    st.download_button(
-        label="⬇️ Download",
-        data=json.dumps(settings_to_download, indent=2),
-        file_name="my_pto_settings.json",
-        mime="application/json",
-        use_container_width=True,
-        help="Save your settings to a file"
-    )
+        st.sidebar.success("✅ Settings loaded successfully!")
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"❌ Error loading file: {str(e)[:50]}")
 
-with col2:
-    # Upload settings
-    uploaded_file = st.file_uploader(
-        "⬆️ Upload",
-        type=['json'],
-        help="Load previously saved settings",
-        label_visibility="collapsed",
-        key="settings_uploader"
-    )
-    if uploaded_file is not None:
-        try:
-            uploaded_settings = json.loads(uploaded_file.read())
-            # Update session state and save
-            save_settings(uploaded_settings)
-            # Convert leaves
-            st.session_state.planned_leaves = [
-                {
-                    'date': datetime.strptime(leave['date'], '%Y-%m-%d'),
-                    'days': leave['days'],
-                    'note': leave.get('note', '')
-                }
-                for leave in uploaded_settings.get('planned_leaves', [])
-            ]
-            st.success("✅ Settings loaded!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error loading settings: {e}")
-
-st.sidebar.markdown("---")
+st.sidebar.markdown("")
 
 # Add new leave
 with st.sidebar.form("add_leave_form"):
@@ -394,6 +366,33 @@ with st.sidebar.form("add_leave_form"):
         current_settings['planned_leaves'] = []
         save_settings(current_settings)
         st.rerun()
+
+# Download settings button - below the add form
+st.sidebar.markdown("")
+st.sidebar.markdown("**💾 Save Current Settings**")
+settings_to_download = {
+    'start_date': simulation_start_date.strftime('%Y-%m-%d'),
+    'initial_rtt': initial_rtt,
+    'initial_last_year': initial_last_year,
+    'initial_this_year': initial_this_year,
+    'rtt_refill_days': rtt_refill_days,
+    'simulation_months': simulation_months,
+    'planned_leaves': [
+        {'date': leave['date'].strftime('%Y-%m-%d'), 'days': leave['days'], 'note': leave.get('note', '')}
+        for leave in st.session_state.planned_leaves
+    ]
+}
+st.sidebar.download_button(
+    label="💾 Download Settings",
+    data=json.dumps(settings_to_download, indent=2),
+    file_name=f"pto_settings_{datetime.now().strftime('%Y%m%d')}.json",
+    mime="application/json",
+    use_container_width=True,
+    help="Save all your PTO settings and planned leaves to a file",
+    type="primary"
+)
+st.sidebar.caption("💡 Save your settings to restore them later or share with others")
+st.sidebar.markdown("---")
 
 # Display planned leaves
 if st.session_state.planned_leaves:
