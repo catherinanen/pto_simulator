@@ -56,6 +56,12 @@ def save_settings(settings):
 # Load previous settings
 saved_settings = load_settings()
 
+# Initialize reload flag
+if 'settings_reloaded' in st.session_state:
+    # Force reload settings after upload
+    saved_settings = load_settings()
+    del st.session_state.settings_reloaded
+
 # Title and description
 st.title("🏖️ PTO (Paid Time Off) Simulator")
 st.markdown("""
@@ -341,17 +347,13 @@ uploaded_file = st.sidebar.file_uploader(
 if uploaded_file is not None:
     try:
         uploaded_settings = json.loads(uploaded_file.read())
-        # Update session state and save
+        # Save to file first
         save_settings(uploaded_settings)
-        # Convert leaves
-        st.session_state.planned_leaves = [
-            {
-                'date': datetime.strptime(leave['date'], '%Y-%m-%d'),
-                'days': leave['days'],
-                'note': leave.get('note', '')
-            }
-            for leave in uploaded_settings.get('planned_leaves', [])
-        ]
+        # Clear session state to force full reload
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        # Set flag to reload settings
+        st.session_state.settings_reloaded = True
         st.sidebar.success("✅ Settings loaded successfully!")
         st.rerun()
     except Exception as e:
